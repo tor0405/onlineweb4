@@ -18,7 +18,7 @@ pipeline:
     commands:
       - cp onlineweb4/settings/example-local.py onlineweb4/settings/local.py
       - yarn install --pure-lockfile
-      - pip install tox
+      - pip install tox tox-pip-extensions
 
   npm-build:
     image: registry.online.ntnu.no/dotkom/onlineweb4-testbase
