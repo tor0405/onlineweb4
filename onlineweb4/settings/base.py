@@ -110,3 +110,7 @@ RECAPTCHA_USE_SSL = config("OW4_DJANGO_RECAPTCHA_USE_SSL", cast=bool, default=Tr
 # oidc_provider - OpenID Connect Provider
 OIDC_USERINFO = 'apps.oidc_provider.claims.userinfo'
 OIDC_EXTRA_SCOPE_CLAIMS = 'apps.oidc_provider.claims.Onlineweb4ScopeClaims'
+
+ULTRACACHE = {
+    "drf": {"viewsets": {"*": {"evaluate": "request.user.is_anonymous"}}}
+}

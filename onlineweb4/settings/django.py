@@ -155,6 +155,7 @@ ROOT_URLCONF = 'onlineweb4.urls'
 WSGI_APPLICATION = 'onlineweb4.wsgi.application'
 
 INSTALLED_APPS = (
+    'ultracache',
     # Third party dependencies
     'django.contrib.humanize',
     'django_js_reverse',
