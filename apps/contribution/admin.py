@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.contribution.models import Repository, RepositoryLanguage
+from apps.contribution.models import Commit, ExternalContributor, Repository, RepositoryLanguage
 
 
 class LanguagesInLine(admin.TabularInline):
@@ -17,4 +17,14 @@ class RepositoryAdmin(admin.ModelAdmin):
     ]
 
 
+class CommitAdmin(admin.ModelAdmin):
+    model = Commit
+
+
+class ExternalContributorAdmin(admin.ModelAdmin):
+    model = ExternalContributor
+
+
+admin.site.register(Commit, CommitAdmin)
+admin.site.register(ExternalContributor, ExternalContributorAdmin)
 admin.site.register(Repository, RepositoryAdmin)

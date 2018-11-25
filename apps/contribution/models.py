@@ -27,6 +27,7 @@ class ExternalContributor(models.Model):
 
 # Commit in repository
 class Commit(models.Model):
+    username = models.ForeignKey(ExternalContributor, null=True, on_delete=models.CASCADE)
     datetime = models.DateTimeField()
     description = models.CharField(max_length=150)
     repository = models.ForeignKey(Repository, related_name='repositories', on_delete=models.CASCADE)

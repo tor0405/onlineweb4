@@ -157,16 +157,15 @@ class UpdateRepositories(Task):
     @staticmethod
     def post_graphql(query):
         token = settings.GITHUB_GRAPHQL_TOKEN
-        print(token)
         url = "https://api.github.com/graphql"
+
         headers = {
             'Content-Type': 'application/json',
             'Authorization': 'bearer ' + str(token)
         }
 
         r = requests.post(url, json={'query': query}, headers=headers)
-        data = json.loads(r.text)
-        return data
+        return json.loads(r.text)
 
-schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=5, minute=40)
+schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=6, minute=0)
 
