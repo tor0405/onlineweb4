@@ -22,7 +22,14 @@ class RepositoryLanguage(models.Model):
 # Contributor to repositories who is not a part of dotkom
 class ExternalContributor(models.Model):
     username = models.CharField(max_length=30)
-    repositories = models.ManyToManyField(Repository)
+    repositories = models.ManyToManyField(Repository, through='Contribution')
+
+
+# Relation between ExternalContributor and Repository
+class Contribution(models.Model):
+    contributor = models.ForeignKey(ExternalContributor, on_delete=models.CASCADE)
+    repository = models.ForeignKey(Repository, on_delete=models.CASCADE)
+    commits = models.IntegerField()
 
 
 # Commit in repository

@@ -5,7 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 from pytz import timezone as tz
 
-from apps.contribution.models import Repository, RepositoryLanguage
+from apps.contribution.models import Contribution, ExternalContributor, Repository, RepositoryLanguage
 from apps.mommy import schedule
 from apps.mommy.registry import Task
 
@@ -16,6 +16,8 @@ class UpdateRepositories(Task):
     def run():
         # Load new data
         fresh = UpdateRepositories.git_repositories()
+        dotkom_members = UpdateRepositories.dotkom_members()
+
         localtz = tz('Europe/Oslo')
         for repo in fresh:
             fresh_repo = Repository(
@@ -31,12 +33,12 @@ class UpdateRepositories(Task):
             if Repository.objects.filter(id=fresh_repo.id).exists():
                 stored_repo = Repository.objects.get(id=fresh_repo.id)
                 repo_languages = repo['languages']
-                UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages)
+                UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages, dotkom_members)
 
             # else: repository does not exist
             else:
                 repo_languages = repo['languages']
-                UpdateRepositories.new_repository(fresh_repo, repo_languages)
+                UpdateRepositories.new_repository(fresh_repo, repo_languages, dotkom_members)
 
         # Delete repositories that does not satisfy the updated_at limit
         old_repositories = Repository.objects.all()
@@ -45,7 +47,7 @@ class UpdateRepositories(Task):
                 repo.delete()
 
     @staticmethod
-    def update_repository(stored_repo, fresh_repo, repo_languages):
+    def update_repository(stored_repo, fresh_repo, repo_languages, dotkom_members):
         stored_repo.name = fresh_repo.name
         stored_repo.description = fresh_repo.description
         stored_repo.updated_at = fresh_repo.updated_at
@@ -69,8 +71,37 @@ class UpdateRepositories(Task):
                 )
                 new_language.save()
 
+        # update repository contributors
+        contributors = UpdateRepositories.get_contributors(stored_repo.name)
+        for username in contributors:
+            if username not in dotkom_members:
+                if ExternalContributor.objects.filter(username=username).exists():
+                    contributor = ExternalContributor.objects.get(username=username)
+
+                    if Contribution.objects.filter(contributor=contributor, repository=stored_repo).exists():
+                        contribution = Contribution.objects.get(contributor=contributor, repository=stored_repo)
+                        contribution.commits = contributors[username]
+                        contribution.save()
+                    else:
+                        new_contribution = Contribution(
+                            contributor=contributor,
+                            repository=stored_repo,
+                            commits=contributors[username]
+                        )
+                        new_contribution.save()
+                else:
+                    new_contributor = ExternalContributor(username=username)
+                    new_contributor.save()
+
+                    new_contribution = Contribution(
+                        contributor=new_contributor,
+                        repository=stored_repo,
+                        commits=contributors[username]
+                    )
+                    new_contribution.save()
+
     @staticmethod
-    def new_repository(new_repo, new_languages):
+    def new_repository(new_repo, new_languages, dotkom_members):
         # Filter out repositories with inactivity past 2 years (365 days * 2)
         if new_repo.updated_at > timezone.now() - timezone.timedelta(days=730):
             new_repo = Repository(
@@ -92,6 +123,20 @@ class UpdateRepositories(Task):
                     repository=new_repo
                 )
                 new_language.save()
+
+            # new repository contributors
+            contributors = UpdateRepositories.get_contributors(new_repo.name)
+            for username in contributors:
+                if username not in dotkom_members:
+                    contributor = ExternalContributor(username=username)
+                    contributor.save()
+
+                    contribution = Contribution(
+                        contributor=contributor,
+                        repository=new_repo,
+                        commits=contributors[username]
+                    )
+                    contribution.save()
 
     @staticmethod
     def git_repositories():
@@ -152,6 +197,40 @@ class UpdateRepositories(Task):
             repository_list.append(repo)
 
         return repository_list
+
+    @staticmethod
+    def dotkom_members():
+        query = """
+                {
+                  organization(login: "dotkom") { 
+                    members (first: 100) {
+                      nodes {
+                        login
+                      }
+                    }
+                  }
+                }
+                """
+        response = UpdateRepositories.post_graphql(query)
+        members = response.get('data', {}).get('organization', {}).get('members', {}).get('nodes')
+
+        member_list = []
+        for member in members:
+            member_list.append(member.get('login'))
+        return member_list
+
+    # RestV3 for contributors, as GraphQL does not support this yet
+    # Returns dictionary { user: contributions }
+    @staticmethod
+    def get_contributors(repo_name):
+        url = "https://api.github.com/repos/dotkom/{0}/contributors".format(repo_name)
+        r = requests.get(url)
+        data = json.loads(r.text)
+
+        contributors = {}
+        for user in data:
+            contributors[user['login']] = user['contributions']
+        return contributors
 
     # GraphQL post method
     @staticmethod
