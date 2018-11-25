@@ -49,21 +49,22 @@ class UpdateRepositories(Task):
         stored_repo.name = fresh_repo.name
         stored_repo.description = fresh_repo.description
         stored_repo.updated_at = fresh_repo.updated_at
-        stored_repo.url = fresh_repo.url
         stored_repo.public_url = fresh_repo.public_url
         stored_repo.issues = fresh_repo.issues
         stored_repo.save()
 
         # Update languages if they exist, and add if not
         for language in repo_languages:
-            if RepositoryLanguage.objects.filter(type=language, repository=stored_repo).exists():
-                stored_language = RepositoryLanguage.objects.get(type=language, repository=stored_repo)
-                stored_language.size = repo_languages[language]
+            if RepositoryLanguage.objects.filter(type=language['name'], repository=stored_repo).exists():
+                stored_language = RepositoryLanguage.objects.get(type=language['name'], repository=stored_repo)
+                stored_language.size = language['size']
+                stored_language.color = language['color']
                 stored_language.save()
             else:
                 new_language = RepositoryLanguage(
                     type=language['name'],
                     size=language['size'],
+                    color=language['color'],
                     repository=stored_repo
                 )
                 new_language.save()
@@ -77,7 +78,6 @@ class UpdateRepositories(Task):
                 name=new_repo.name,
                 description=new_repo.description,
                 updated_at=new_repo.updated_at,
-                url=new_repo.url,
                 public_url=new_repo.public_url,
                 issues=new_repo.issues
             )
@@ -88,6 +88,7 @@ class UpdateRepositories(Task):
                 new_language = RepositoryLanguage(
                     type=language['name'],
                     size=language['size'],
+                    color=language['color'],
                     repository=new_repo
                 )
                 new_language.save()
@@ -95,8 +96,8 @@ class UpdateRepositories(Task):
     @staticmethod
     def git_repositories():
         query = """
-        { 
-          organization(login: "dotkom") { 
+        {
+          organization(login: "dotkom") {
             repositories (first: 100) {
               nodes {
                 id
@@ -168,3 +169,4 @@ class UpdateRepositories(Task):
         return data
 
 schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=5, minute=40)
+
