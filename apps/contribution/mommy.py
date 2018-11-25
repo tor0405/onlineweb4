@@ -128,8 +128,11 @@ class UpdateRepositories(Task):
             contributors = UpdateRepositories.get_contributors(new_repo.name)
             for username in contributors:
                 if username not in dotkom_members:
-                    contributor = ExternalContributor(username=username)
-                    contributor.save()
+                    if ExternalContributor.objects.filter(username=username).exists():
+                        contributor = ExternalContributor.objects.get(username=username)
+                    else:
+                        contributor = ExternalContributor(username=username)
+                        contributor.save()
 
                     contribution = Contribution(
                         contributor=contributor,
@@ -153,6 +156,7 @@ class UpdateRepositories(Task):
                 issues{
                   totalCount
                 }
+                isPrivate
                 languages (first:10) {
                   totalSize
                   edges {
@@ -174,6 +178,11 @@ class UpdateRepositories(Task):
 
         repository_list = []
         for r in dict_repos:
+
+            # If repository is private, skip
+            if r.get('isPrivate'):
+                continue
+
             total_size = r.get('languages', {}).get('totalSize')
             languages = []
             for l in r.get('languages', {}).get('edges'):
@@ -223,13 +232,15 @@ class UpdateRepositories(Task):
     # Returns dictionary { user: contributions }
     @staticmethod
     def get_contributors(repo_name):
-        url = "https://api.github.com/repos/dotkom/{0}/contributors".format(repo_name)
+        url = "https://api.github.com/repos/dotkom/{0}/contributors?per_page=100".format(repo_name)
         r = requests.get(url)
         data = json.loads(r.text)
 
         contributors = {}
         for user in data:
-            contributors[user['login']] = user['contributions']
+            username = str(user['login'])
+            commits = int(user['contributions'])
+            contributors[username] = commits
         return contributors
 
     # GraphQL post method
