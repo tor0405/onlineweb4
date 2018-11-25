@@ -96,7 +96,7 @@ IMPORT_DDF_MODELS = False
 
 # Django CORS headers
 CORS_ORIGIN_ALLOW_ALL = config("OW4_DJANGO_CORS_ORIGIN_ALLOW_ALL", cast=bool, default=True)
-CORS_URLS_REGEX = r'^(/api/v1/.*|/sso/user/|/openid/.*)$' # Enables CORS on all /api/v1/, /sso/user/ and all /openid/ endpoints 
+CORS_URLS_REGEX = r'^(/api/v1/.*|/sso/user/|/openid/.*)$' # Enables CORS on all /api/v1/, /sso/user/ and all /openid/ endpoints
 
 
 # Google reCaptcha settings
@@ -110,3 +110,6 @@ RECAPTCHA_USE_SSL = config("OW4_DJANGO_RECAPTCHA_USE_SSL", cast=bool, default=Tr
 # oidc_provider - OpenID Connect Provider
 OIDC_USERINFO = 'apps.oidc_provider.claims.userinfo'
 OIDC_EXTRA_SCOPE_CLAIMS = 'apps.oidc_provider.claims.Onlineweb4ScopeClaims'
+
+# Github GraphQL Oauth Token
+GITHUB_GRAPHQL_TOKEN = os.getenv("GITHUB_GRAPHQL_TOKEN")

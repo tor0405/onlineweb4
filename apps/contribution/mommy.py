@@ -1,6 +1,7 @@
 import json
 
 import requests
+from django.conf import settings
 from django.utils import timezone
 from pytz import timezone as tz
 
@@ -8,36 +9,33 @@ from apps.contribution.models import Repository, RepositoryLanguage
 from apps.mommy import schedule
 from apps.mommy.registry import Task
 
-git_domain = "https://api.github.com"
-
 
 class UpdateRepositories(Task):
 
     @staticmethod
     def run():
         # Load new data
-        fresh = UpdateRepositories.get_git_repositories()
+        fresh = UpdateRepositories.git_repositories()
         localtz = tz('Europe/Oslo')
         for repo in fresh:
             fresh_repo = Repository(
-                id=int(repo['id']),
+                id=repo['id'],
                 name=repo['name'],
                 description=repo['description'],
                 updated_at=localtz.localize(timezone.datetime.strptime(repo['updated_at'], "%Y-%m-%dT%H:%M:%SZ")),
-                url=repo['url'],
-                public_url=repo['html_url'],
-                issues=repo['open_issues_count']
+                public_url=repo['public_url'],
+                issues=repo['issues']
             )
 
             # If repository exists, only update data
             if Repository.objects.filter(id=fresh_repo.id).exists():
                 stored_repo = Repository.objects.get(id=fresh_repo.id)
-                repo_languages = UpdateRepositories.get_repository_languages(stored_repo.url)
+                repo_languages = repo['languages']
                 UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages)
 
             # else: repository does not exist
             else:
-                repo_languages = UpdateRepositories.get_repository_languages(fresh_repo.url)
+                repo_languages = repo['languages']
                 UpdateRepositories.new_repository(fresh_repo, repo_languages)
 
         # Delete repositories that does not satisfy the updated_at limit
@@ -64,8 +62,8 @@ class UpdateRepositories(Task):
                 stored_language.save()
             else:
                 new_language = RepositoryLanguage(
-                    type=language,
-                    size=(int(repo_languages[language])),
+                    type=language['name'],
+                    size=language['size'],
                     repository=stored_repo
                 )
                 new_language.save()
@@ -88,24 +86,85 @@ class UpdateRepositories(Task):
             # Add repository languages
             for language in new_languages:
                 new_language = RepositoryLanguage(
-                    type=language,
-                    size=int(new_languages[language]),
+                    type=language['name'],
+                    size=language['size'],
                     repository=new_repo
                 )
                 new_language.save()
 
     @staticmethod
-    def get_git_repositories():
-        url = git_domain + "/users/dotkom/repos?per_page=60"
-        r = requests.get(url)
-        data = json.loads(r.text)
-        return data
+    def git_repositories():
+        query = """
+        { 
+          organization(login: "dotkom") { 
+            repositories (first: 100) {
+              nodes {
+                id
+                name
+                description
+                updatedAt
+                url
+                issues{
+                  totalCount
+                }
+                languages (first:10) {
+                  totalSize
+                  edges {
+                    size
+                    node {
+                      name
+                      color
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
 
+        response = UpdateRepositories.post_graphql(query)
+        dict_repos = response.get('data', {}).get('organization', {}).get('repositories', {}).get('nodes')
+
+        repository_list = []
+        for r in dict_repos:
+            total_size = r.get('languages', {}).get('totalSize')
+            languages = []
+            for l in r.get('languages', {}).get('edges'):
+                language = {
+                    'name': l.get('node', {}).get('name'),
+                    'color': l.get('node', {}).get('color'),
+                    'size': l.get('size')
+                }
+                languages.append(language)
+
+            repo = {
+                'id': r.get('id'),
+                'name': r.get('name'),
+                'description': r.get('description'),
+                'updated_at': r.get('updatedAt'),
+                'public_url': r.get('url'),
+                'issues': r.get('issues', {}).get('totalCount'),
+                'total_size': total_size,
+                'languages': languages
+            }
+            repository_list.append(repo)
+
+        return repository_list
+
+    # GraphQL post method
     @staticmethod
-    def get_repository_languages(url):
-        r = requests.get(url + "/languages")
+    def post_graphql(query):
+        token = settings.GITHUB_GRAPHQL_TOKEN
+        print(token)
+        url = "https://api.github.com/graphql"
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': 'bearer ' + str(token)
+        }
+
+        r = requests.post(url, json={'query': query}, headers=headers)
         data = json.loads(r.text)
         return data
 
-
-schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=6, minute=0)
+schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=5, minute=40)
