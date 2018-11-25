@@ -153,7 +153,7 @@ class UpdateRepositories(Task):
                 description
                 updatedAt
                 url
-                issues{
+                issues (states: [OPEN]){
                   totalCount
                 }
                 isPrivate
