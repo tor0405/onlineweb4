@@ -13,6 +13,9 @@ class Repository(models.Model):
     def weekly_activity(self):
         return ActivityEntry.objects.filter(repository=self)
 
+    def __str__(self):
+        return self.name
+
 
 # Github programming-language
 class RepositoryLanguage(models.Model):
@@ -26,6 +29,9 @@ class RepositoryLanguage(models.Model):
 class ExternalContributor(models.Model):
     username = models.CharField(max_length=30)
     repositories = models.ManyToManyField(Repository, through='Contribution')
+
+    def __str__(self):
+        return self.username
 
 
 # Relation between ExternalContributor and Repository

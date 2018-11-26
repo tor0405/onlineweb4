@@ -124,7 +124,7 @@ class UpdateRepositories(Task):
     def update_contributors(repository, dotkom_members, contributors):
         # update repository contributors
         for username in contributors:
-            if username not in dotkom_members:
+            if username not in dotkom_members and dotkom_members:
                 if ExternalContributor.objects.filter(username=username).exists():
                     contributor = ExternalContributor.objects.get(username=username)
 
@@ -326,4 +326,4 @@ class UpdateRepositories(Task):
         r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers)
         return json.loads(r.text)
 
-schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=15, minute=9)
+schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=6, minute=0)
