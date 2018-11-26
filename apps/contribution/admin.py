@@ -24,9 +24,17 @@ class RepositoryAdmin(admin.ModelAdmin):
     ]
 
 
+class ContributionsInLine(admin.TabularInline):
+    model = Contribution
+    extra = 0
+
+
 class ExternalContributorAdmin(admin.ModelAdmin):
     model = ExternalContributor
     list_display = ['username']
+    inlines = [
+        ContributionsInLine
+    ]
 
 
 class ContributionAdmin(admin.ModelAdmin):

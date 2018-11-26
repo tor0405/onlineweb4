@@ -18,15 +18,14 @@ class UpdateRepositories(Task):
 
     @staticmethod
     def run():
-        """
         if settings.GITHUB_GRAPHQL_TOKEN == "no_token":
             logger.error("GraphQL token did not exist. Contribution.mommy was unable to execute.")
             return
-        """
 
         # Load new data
         fresh = UpdateRepositories.git_repositories()
         if fresh is None:
+            # Error is logged in http post method for GraphQL
             return
 
         dotkom_members = UpdateRepositories.dotkom_members()
@@ -48,11 +47,17 @@ class UpdateRepositories(Task):
             # If repository exists, only update data
             if Repository.objects.filter(id=fresh_repo.id).exists():
                 stored_repo = Repository.objects.get(id=fresh_repo.id)
-                UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages, activity_data,
-                                                     dotkom_members)
+                stored_repo = UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages)
             # else: repository does not exist
             else:
-                UpdateRepositories.new_repository(fresh_repo, repo_languages, activity_data, dotkom_members)
+                stored_repo = UpdateRepositories.new_repository(fresh_repo, repo_languages)
+
+            # Happens if repo is outside timescope
+            if stored_repo is not None:
+                # Update contributors and activity (Moves http requests out of functions)
+                repository_contributors = UpdateRepositories.get_contributors(stored_repo.name)
+                UpdateRepositories.update_contributors(stored_repo, dotkom_members, repository_contributors)
+                UpdateRepositories.update_activity(stored_repo, activity_data)
 
         # Delete repositories that does not satisfy the updated_at limit
         old_repositories = Repository.objects.all()
@@ -60,8 +65,9 @@ class UpdateRepositories(Task):
             if repo.updated_at < timezone.now() - timezone.timedelta(days=730):
                 repo.delete()
 
+    # Update repository data
     @staticmethod
-    def update_repository(stored_repo, fresh_repo, repo_languages, activity_data, dotkom_members):
+    def update_repository(stored_repo, fresh_repo, repo_languages):
         stored_repo.name = fresh_repo.name
         stored_repo.description = fresh_repo.description
         stored_repo.updated_at = fresh_repo.updated_at
@@ -84,41 +90,11 @@ class UpdateRepositories(Task):
                     repository=stored_repo
                 )
                 new_language.save()
+        return stored_repo
 
-        # Add activity data
-        UpdateRepositories.update_activity(stored_repo, activity_data)
-
-        # update repository contributors
-        contributors = UpdateRepositories.get_contributors(stored_repo.name)
-        for username in contributors:
-            if username not in dotkom_members:
-                if ExternalContributor.objects.filter(username=username).exists():
-                    contributor = ExternalContributor.objects.get(username=username)
-
-                    if Contribution.objects.filter(contributor=contributor, repository=stored_repo).exists():
-                        contribution = Contribution.objects.get(contributor=contributor, repository=stored_repo)
-                        contribution.commits = contributors[username]
-                        contribution.save()
-                    else:
-                        new_contribution = Contribution(
-                            contributor=contributor,
-                            repository=stored_repo,
-                            commits=contributors[username]
-                        )
-                        new_contribution.save()
-                else:
-                    new_contributor = ExternalContributor(username=username)
-                    new_contributor.save()
-
-                    new_contribution = Contribution(
-                        contributor=new_contributor,
-                        repository=stored_repo,
-                        commits=contributors[username]
-                    )
-                    new_contribution.save()
-
+    # Create new repository
     @staticmethod
-    def new_repository(new_repo, new_languages, activity_data, dotkom_members):
+    def new_repository(new_repo, new_languages):
         # Filter out repositories with inactivity past 2 years (365 days * 2)
         if new_repo.updated_at > timezone.now() - timezone.timedelta(days=730):
             new_repo = Repository(
@@ -140,27 +116,41 @@ class UpdateRepositories(Task):
                     repository=new_repo
                 )
                 new_language.save()
+            return new_repo
+        return None
 
-            # Add activity data
-            UpdateRepositories.update_activity(new_repo, activity_data)
+    # Update contributor data
+    @staticmethod
+    def update_contributors(repository, dotkom_members, contributors):
+        # update repository contributors
+        for username in contributors:
+            if username not in dotkom_members:
+                if ExternalContributor.objects.filter(username=username).exists():
+                    contributor = ExternalContributor.objects.get(username=username)
 
-            # new repository contributors
-            contributors = UpdateRepositories.get_contributors(new_repo.name)
-            for username in contributors:
-                if username not in dotkom_members:
-                    if ExternalContributor.objects.filter(username=username).exists():
-                        contributor = ExternalContributor.objects.get(username=username)
+                    if Contribution.objects.filter(contributor=contributor, repository=repository).exists():
+                        contribution = Contribution.objects.get(contributor=contributor, repository=repository)
+                        contribution.commits = contributors[username]
+                        contribution.save()
                     else:
-                        contributor = ExternalContributor(username=username)
-                        contributor.save()
+                        new_contribution = Contribution(
+                            contributor=contributor,
+                            repository=repository,
+                            commits=contributors[username]
+                        )
+                        new_contribution.save()
+                else:
+                    new_contributor = ExternalContributor(username=username)
+                    new_contributor.save()
 
-                    contribution = Contribution(
-                        contributor=contributor,
-                        repository=new_repo,
+                    new_contribution = Contribution(
+                        contributor=new_contributor,
+                        repository=repository,
                         commits=contributors[username]
                     )
-                    contribution.save()
+                    new_contribution.save()
 
+    # Update activity data
     @staticmethod
     def update_activity(repository, activity_data):
         # Calculate activity scores on dates
@@ -183,6 +173,7 @@ class UpdateRepositories(Task):
                 )
                 activity_entry.save()
 
+    # Fetch git repository data from GraphQL
     @staticmethod
     def git_repositories():
         query = """
@@ -201,7 +192,7 @@ class UpdateRepositories(Task):
                 defaultBranchRef{
                   target{
                     ... on Commit{
-                      history(first: 500, since: $since){
+                      history(first: 100, since: $since){
                         nodes {
                           committedDate
                           additions
@@ -283,6 +274,7 @@ class UpdateRepositories(Task):
 
         return repository_list
 
+    # Fetch dotkom member list from RestV3
     @staticmethod
     def dotkom_members():
         query = """
@@ -314,6 +306,7 @@ class UpdateRepositories(Task):
 
         contributors = {}
         for user in data:
+            print(user['login'])
             username = str(user['login'])
             commits = int(user['contributions'])
             contributors[username] = commits
@@ -333,4 +326,4 @@ class UpdateRepositories(Task):
         r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers)
         return json.loads(r.text)
 
-schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=13, minute=52)
+schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=15, minute=9)
