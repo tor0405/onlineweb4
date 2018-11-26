@@ -1,4 +1,5 @@
 import json
+import logging
 
 import requests
 from django.conf import settings
@@ -9,11 +10,17 @@ from apps.contribution.models import Contribution, ExternalContributor, Reposito
 from apps.mommy import schedule
 from apps.mommy.registry import Task
 
+logger = logging.getLogger()
+
 
 class UpdateRepositories(Task):
 
     @staticmethod
     def run():
+        if settings.GITHUB_GRAPHQL_TOKEN == "no_token":
+            logger.error("GraphQL token did not exist. Contribution.mommy was unable to execute.")
+            return
+
         # Load new data
         fresh = UpdateRepositories.git_repositories()
         dotkom_members = UpdateRepositories.dotkom_members()

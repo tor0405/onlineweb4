@@ -112,4 +112,4 @@ OIDC_USERINFO = 'apps.oidc_provider.claims.userinfo'
 OIDC_EXTRA_SCOPE_CLAIMS = 'apps.oidc_provider.claims.Onlineweb4ScopeClaims'
 
 # Github GraphQL Oauth Token
-GITHUB_GRAPHQL_TOKEN = os.getenv("OW4_DJANGO_GITHUB_GRAPHQL_TOKEN")
+GITHUB_GRAPHQL_TOKEN = config("OW4_DJANGO_GITHUB_GRAPHQL_TOKEN", default="no_token")
