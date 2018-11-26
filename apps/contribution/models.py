@@ -40,4 +40,3 @@ class ActivityEntry(models.Model):
     repository = models.ForeignKey(Repository, related_name='repositories', on_delete=models.CASCADE)
     date = models.DateField()
     score = models.IntegerField()
-

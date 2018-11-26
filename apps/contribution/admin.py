@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from apps.contribution.models import ActivityEntry, Contribution, ExternalContributor, Repository, RepositoryLanguage
+from apps.contribution.models import (ActivityEntry, Contribution, ExternalContributor, Repository,
+                                      RepositoryLanguage)
 
 
 class LanguagesInLine(admin.TabularInline):

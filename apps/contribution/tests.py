@@ -40,7 +40,7 @@ class UpdateRepositoriesTest(TestCase):
 
         fresh_languages = [{'name': 'JavaScript', 'size': 90000, 'color': '#FFFFFF'}]
 
-        UpdateRepositories.update_repository(self.repo, fresh_repo, fresh_languages)
+        UpdateRepositories.update_repository(self.repo, fresh_repo, fresh_languages, [], [])
         self.assertEqual(fresh_repo.name, self.repo.name)
         self.assertEqual(fresh_repo.description, self.repo.description)
         self.assertEqual(fresh_repo.updated_at, self.repo.updated_at)
@@ -61,7 +61,7 @@ class UpdateRepositoriesTest(TestCase):
 
         fresh_languages = [{'name': 'PythonScript', 'size': 90000, 'color': '#FFFFFF'}]
 
-        UpdateRepositories.new_repository(fresh_repo, fresh_languages)
+        UpdateRepositories.new_repository(fresh_repo, fresh_languages, [], [])
         stored_repo = Repository.objects.get(id=4567)
         self.assertEqual(stored_repo.name, fresh_repo.name)
         self.assertEqual(stored_repo.description, fresh_repo.description)

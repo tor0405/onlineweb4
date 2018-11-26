@@ -6,7 +6,8 @@ from django.conf import settings
 from django.utils import timezone
 from pytz import timezone as tz
 
-from apps.contribution.models import ActivityEntry, Contribution, ExternalContributor, Repository, RepositoryLanguage
+from apps.contribution.models import (ActivityEntry, Contribution, ExternalContributor, Repository,
+                                      RepositoryLanguage)
 from apps.mommy import schedule
 from apps.mommy.registry import Task
 
@@ -286,7 +287,7 @@ class UpdateRepositories(Task):
     def dotkom_members():
         query = """
                 {
-                  organization(login: "dotkom") { 
+                  organization(login: "dotkom") {
                     members (first: 100) {
                       nodes {
                         login
@@ -333,4 +334,3 @@ class UpdateRepositories(Task):
         return json.loads(r.text)
 
 schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=13, minute=52)
-
