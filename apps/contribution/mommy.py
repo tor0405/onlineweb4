@@ -6,7 +6,7 @@ from django.conf import settings
 from django.utils import timezone
 from pytz import timezone as tz
 
-from apps.contribution.models import Contribution, ExternalContributor, Repository, RepositoryLanguage
+from apps.contribution.models import ActivityEntry, Contribution, ExternalContributor, Repository, RepositoryLanguage
 from apps.mommy import schedule
 from apps.mommy.registry import Task
 
@@ -17,12 +17,17 @@ class UpdateRepositories(Task):
 
     @staticmethod
     def run():
+        """
         if settings.GITHUB_GRAPHQL_TOKEN == "no_token":
             logger.error("GraphQL token did not exist. Contribution.mommy was unable to execute.")
             return
+        """
 
         # Load new data
         fresh = UpdateRepositories.git_repositories()
+        if fresh is None:
+            return
+
         dotkom_members = UpdateRepositories.dotkom_members()
 
         localtz = tz('Europe/Oslo')
@@ -36,16 +41,17 @@ class UpdateRepositories(Task):
                 issues=repo['issues']
             )
 
+            repo_languages = repo['languages']
+            activity_data = repo['activity']
+
             # If repository exists, only update data
             if Repository.objects.filter(id=fresh_repo.id).exists():
                 stored_repo = Repository.objects.get(id=fresh_repo.id)
-                repo_languages = repo['languages']
-                UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages, dotkom_members)
-
+                UpdateRepositories.update_repository(stored_repo, fresh_repo, repo_languages, activity_data,
+                                                     dotkom_members)
             # else: repository does not exist
             else:
-                repo_languages = repo['languages']
-                UpdateRepositories.new_repository(fresh_repo, repo_languages, dotkom_members)
+                UpdateRepositories.new_repository(fresh_repo, repo_languages, activity_data, dotkom_members)
 
         # Delete repositories that does not satisfy the updated_at limit
         old_repositories = Repository.objects.all()
@@ -54,7 +60,7 @@ class UpdateRepositories(Task):
                 repo.delete()
 
     @staticmethod
-    def update_repository(stored_repo, fresh_repo, repo_languages, dotkom_members):
+    def update_repository(stored_repo, fresh_repo, repo_languages, activity_data, dotkom_members):
         stored_repo.name = fresh_repo.name
         stored_repo.description = fresh_repo.description
         stored_repo.updated_at = fresh_repo.updated_at
@@ -77,6 +83,9 @@ class UpdateRepositories(Task):
                     repository=stored_repo
                 )
                 new_language.save()
+
+        # Add activity data
+        UpdateRepositories.update_activity(stored_repo, activity_data)
 
         # update repository contributors
         contributors = UpdateRepositories.get_contributors(stored_repo.name)
@@ -108,7 +117,7 @@ class UpdateRepositories(Task):
                     new_contribution.save()
 
     @staticmethod
-    def new_repository(new_repo, new_languages, dotkom_members):
+    def new_repository(new_repo, new_languages, activity_data, dotkom_members):
         # Filter out repositories with inactivity past 2 years (365 days * 2)
         if new_repo.updated_at > timezone.now() - timezone.timedelta(days=730):
             new_repo = Repository(
@@ -131,6 +140,9 @@ class UpdateRepositories(Task):
                 )
                 new_language.save()
 
+            # Add activity data
+            UpdateRepositories.update_activity(new_repo, activity_data)
+
             # new repository contributors
             contributors = UpdateRepositories.get_contributors(new_repo.name)
             for username in contributors:
@@ -149,9 +161,31 @@ class UpdateRepositories(Task):
                     contribution.save()
 
     @staticmethod
+    def update_activity(repository, activity_data):
+        # Calculate activity scores on dates
+        parsed_entries = {}
+        for entry in activity_data:
+            date = timezone.datetime.strptime(entry['datetime'], "%Y-%m-%dT%H:%M:%SZ").date()
+            activity_score = int(entry['additions']) + int(entry['deletions'])
+
+            if date not in parsed_entries:
+                parsed_entries[date] = 0
+            parsed_entries[date] += activity_score
+
+        # Only add data if it doesn't already exist
+        for date in parsed_entries:
+            if not ActivityEntry.objects.filter(date=date).exists():
+                activity_entry = ActivityEntry(
+                    repository=repository,
+                    date=date,
+                    score=parsed_entries[date]
+                )
+                activity_entry.save()
+
+    @staticmethod
     def git_repositories():
         query = """
-        {
+        query($since: GitTimestamp) {
           organization(login: "dotkom") {
             repositories (first: 100) {
               nodes {
@@ -162,6 +196,19 @@ class UpdateRepositories(Task):
                 url
                 issues (states: [OPEN]){
                   totalCount
+                }
+                defaultBranchRef{
+                  target{
+                    ... on Commit{
+                      history(first: 500, since: $since){
+                        nodes {
+                          committedDate
+                          additions
+                          deletions
+                        }
+                      }
+                    }
+                  }
                 }
                 isPrivate
                 languages (first:10) {
@@ -179,8 +226,16 @@ class UpdateRepositories(Task):
           }
         }
         """
+        time = timezone.datetime.strftime(timezone.now() - timezone.timedelta(days=7), "%Y-%m-%dT%H:%M:%SZ")
+        variables = {
+            'since': str(time)
+        }
 
-        response = UpdateRepositories.post_graphql(query)
+        response = UpdateRepositories.post_graphql(query, variables)
+        if response.get('data') is None:
+            logger.error("Something went wrong: {}".format(response.get('errors')))
+            return None
+
         dict_repos = response.get('data', {}).get('organization', {}).get('repositories', {}).get('nodes')
 
         repository_list = []
@@ -190,6 +245,7 @@ class UpdateRepositories(Task):
             if r.get('isPrivate'):
                 continue
 
+            # Parse language data
             total_size = r.get('languages', {}).get('totalSize')
             languages = []
             for l in r.get('languages', {}).get('edges'):
@@ -200,6 +256,17 @@ class UpdateRepositories(Task):
                 }
                 languages.append(language)
 
+            # Parse activity data
+            activities = []
+            for entry in r.get('defaultBranchRef', {}).get('target', {}).get('history', {}).get('nodes'):
+                activity = {
+                    'datetime': entry.get('committedDate'),
+                    'additions': entry.get('additions'),
+                    'deletions': entry.get('deletions')
+                }
+                activities.append(activity)
+
+            # Parse repository data
             repo = {
                 'id': r.get('id'),
                 'name': r.get('name'),
@@ -208,7 +275,8 @@ class UpdateRepositories(Task):
                 'public_url': r.get('url'),
                 'issues': r.get('issues', {}).get('totalCount'),
                 'total_size': total_size,
-                'languages': languages
+                'languages': languages,
+                'activity': activities
             }
             repository_list.append(repo)
 
@@ -252,7 +320,7 @@ class UpdateRepositories(Task):
 
     # GraphQL post method
     @staticmethod
-    def post_graphql(query):
+    def post_graphql(query, variables=None):
         token = settings.GITHUB_GRAPHQL_TOKEN
         url = "https://api.github.com/graphql"
 
@@ -261,8 +329,8 @@ class UpdateRepositories(Task):
             'Authorization': 'bearer ' + str(token)
         }
 
-        r = requests.post(url, json={'query': query}, headers=headers)
+        r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers)
         return json.loads(r.text)
 
-schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=6, minute=0)
+schedule.register(UpdateRepositories, day_of_week="mon-sun", hour=13, minute=52)
 

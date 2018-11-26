@@ -10,6 +10,9 @@ class Repository(models.Model):
     issues = models.IntegerField()
     updated_at = models.DateTimeField()
 
+    def weekly_activity(self):
+        return ActivityEntry.objects.filter(repository=self)
+
 
 # Github programming-language
 class RepositoryLanguage(models.Model):
@@ -32,9 +35,9 @@ class Contribution(models.Model):
     commits = models.IntegerField()
 
 
-# Commit in repository
-class Commit(models.Model):
-    username = models.ForeignKey(ExternalContributor, null=True, on_delete=models.CASCADE)
-    datetime = models.DateTimeField()
-    description = models.CharField(max_length=150)
+# Activity of repository
+class ActivityEntry(models.Model):
     repository = models.ForeignKey(Repository, related_name='repositories', on_delete=models.CASCADE)
+    date = models.DateField()
+    score = models.IntegerField()
+

@@ -1,10 +1,15 @@
 from django.contrib import admin
 
-from apps.contribution.models import Commit, Contribution, ExternalContributor, Repository, RepositoryLanguage
+from apps.contribution.models import ActivityEntry, Contribution, ExternalContributor, Repository, RepositoryLanguage
 
 
 class LanguagesInLine(admin.TabularInline):
     model = RepositoryLanguage
+    extra = 0
+
+
+class ActivityEntriesInLine(admin.TabularInline):
+    model = ActivityEntry
     extra = 0
 
 
@@ -14,11 +19,8 @@ class RepositoryAdmin(admin.ModelAdmin):
     list_display = ['id', 'name', 'updated_at']
     inlines = [
         LanguagesInLine,
+        ActivityEntriesInLine
     ]
-
-
-class CommitAdmin(admin.ModelAdmin):
-    model = Commit
 
 
 class ExternalContributorAdmin(admin.ModelAdmin):
@@ -31,7 +33,12 @@ class ContributionAdmin(admin.ModelAdmin):
     list_display = ['contributor', 'repository', 'commits']
 
 
-admin.site.register(Commit, CommitAdmin)
+class ActivityEntryAdmin(admin.ModelAdmin):
+    model = ActivityEntry
+    list_display = ['date', 'score']
+
+
+admin.site.register(ActivityEntry, ActivityEntryAdmin)
 admin.site.register(Contribution, ContributionAdmin)
 admin.site.register(ExternalContributor, ExternalContributorAdmin)
 admin.site.register(Repository, RepositoryAdmin)
