@@ -8,6 +8,7 @@ from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 
+from apps.authentication.models import OnlineUser, StudentCard, StudentCredentials
 from apps.authentication.tasks import SynchronizeGroups
 from apps.gsuite.mail_syncer.main import update_g_suite_group, update_g_suite_user
 
@@ -67,3 +68,13 @@ def trigger_group_syncer(sender, instance, created=False, **kwargs):
 
 
 m2m_changed.connect(trigger_group_syncer, dispatch_uid=sync_uuid, sender=User.groups.through)
+
+
+@receiver(post_save, sender=OnlineUser)
+def create_related_user_info(sender, instance, created=False, **kwargs):
+    """
+    Create related user data like objects for access_card and student data
+    """
+    if created:
+        StudentCard.objects.create(user=instance)
+        StudentCredentials.objects.create(user=instance)

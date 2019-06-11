@@ -279,6 +279,37 @@ class OnlineUser(AbstractUser):
         default_permissions = ('add', 'change', 'delete')
 
 
+class StudentCredentials(models.Model):
+    """ NTNU credentials """
+    user = models.ForeignKey(OnlineUser, related_name='student_credentials', on_delete=models.CASCADE)
+    ntnu_username = models.CharField(_("NTNU-brukernavn"), max_length=50, blank=True, null=True, unique=True)
+    student_number = models.CharField(_("Studentnummer"), max_length=50, blank=True, null=True, unique=True)
+
+    class Meta:
+        verbose_name = _('Studentinformasjon')
+        ordering = ('ntnu_username',)
+        permissions = (
+            ('view_studentcredentials', 'View Student Credentials'),
+        )
+        default_permissions = ('add', 'change', 'delete')
+
+
+class StudentCard(models.Model):
+    """ Stores a NTNU access card """
+    user = models.ForeignKey(OnlineUser, related_name='access_card', on_delete=models.CASCADE)
+    rfid = models.CharField(_("RFID"), max_length=50, unique=True, blank=True, null=True, validators=[validate_rfid])
+    nfc = models.CharField(_("NFC"), max_length=50, unique=True, blank=True, null=True, validators=[validate_rfid])
+    barcode = models.CharField(_("Strekkode"), max_length=50, blank=True, null=True, unique=True)
+
+    class Meta:
+        verbose_name = _('Studentkort')
+        ordering = ('rfid', 'nfc',)
+        permissions = (
+            ('view_studentcard', 'View Student Card'),
+        )
+        default_permissions = ('add', 'change', 'delete')
+
+
 class Email(models.Model):
     user = models.ForeignKey(OnlineUser, related_name="email_user", on_delete=models.CASCADE)
     email = models.EmailField(_("epostadresse"), unique=True)
