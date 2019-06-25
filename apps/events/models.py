@@ -1084,3 +1084,95 @@ class GroupRestriction(models.Model):
             ('view_restriction', 'View Restriction'),
         )
         default_permissions = ('add', 'change', 'delete')
+
+
+class EventPayment('payments.Payment'):
+    attendance_event = models.OneToOneField(AttendanceEvent, related_name='payment', on_delete=models.CASCADE)
+
+    def get_content_object(self):
+        return self.attendance_event
+
+    @property
+    def description(self):
+        return self.attendance_event.event.title
+
+    def responsible_mail(self):
+        """ TODO 1209 """
+
+        event_type = self.attendance_event.event.event_type
+        if event_type == 1 or event_type == 4:  # Sosialt & Utflukt
+            return settings.EMAIL_ARRKOM
+        elif event_type == 2:  # Bedpres
+            return settings.EMAIL_BEDKOM
+        elif event_type == 3:  # Kurs
+            return settings.EMAIL_FAGKOM
+        elif event_type == 5:  # Ekskursjon
+            return settings.EMAIL_EKSKOM
+        else:
+            return settings.DEFAULT_FROM_EMAIL
+        return settings.DEFAULT_FROM_EMAIL
+
+    def is_user_allowed_to_pay(self, user: User) -> bool:
+        """
+        In the case of attendance events the user should only be allowed to pay if they are attending
+        and has not paid yet.
+        """
+        event: AttendanceEvent = self.get_content_object()
+        is_attending = event.is_attendee(user)
+        if is_attending:
+            attendee = Attendee.objects.get(user=user, event=event)
+            return not attendee.has_paid
+        return False
+
+    def handle_payment(self, user: User):
+        """
+        Deletes any relevant payment delays, suspensions and marks user's attendee object as paid.
+
+        :param OnlineUser user: User who paid
+        """
+        super().handle_payment()
+        attendance_event: AttendanceEvent = self.get_content_object()
+
+        attendee = Attendee.objects.filter(event=attendance_event, user=user)
+
+        # Delete payment delay objects for the user if there are any
+        for delay in self.get_payment_delays_for_user(user):
+            delay.delete()
+
+        # If the user is suspended because of a lack of payment the suspension is deactivated.
+        for suspension in self.get_suspensions_for_user(user):
+            suspension.active = False
+            suspension.save()
+
+        if attendee:
+            attendee[0].paid = True
+            attendee[0].save()
+        else:
+            Attendee.objects.create(event=attendance_event, user=user, paid=True)
+
+    def handle_refund(self, payment_relation):
+        """
+        Method for handling refunds. For events it deletes the Attendee object.
+
+        :param PaymentRelation payment_relation: user payment to refund
+        """
+        super().handle_refund()
+
+        Attendee.objects.get(
+            event=self.get_content_object(),
+            user=payment_relation.user,
+        ).delete()
+
+    def check_refund(self, payment_relation) -> (bool, str):
+        attendance_event = self.get_content_object()
+        if attendance_event.unattend_deadline < timezone.now():
+            return False, _("Fristen for å melde seg av har utgått")
+        if len(Attendee.objects.filter(event=attendance_event, user=payment_relation.user)) == 0:
+            return False, _("Du er ikke påmeldt dette arrangementet.")
+        if attendance_event.event.event_start < timezone.now():
+            return False, _("Dette arrangementet har allerede startet.")
+
+        return True, ''
+
+    def clean_generic_relation(self):
+        return

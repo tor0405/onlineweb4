@@ -316,3 +316,48 @@ class OrderLine(models.Model):
             ('view_order_line', 'View Order Line'),
         )
         default_permissions = ('add', 'change', 'delete')
+
+
+class WebshopPayment(BasePayment):
+    order_line = models.OneToOneField(OrderLine, related_name='payment', on_delete=models.CASCADE)
+
+    def get_content_object(self) -> OrderLine:
+        return self.order_line
+
+    @property
+    def description(self) -> str:
+        return self.get_content_object().payment_description
+
+    def responsible_mail(self):
+        return settings.EMAIL_PROKOM
+
+    def is_user_allowed_to_pay(self, user: User) -> bool:
+        """
+        Payments for Webshop orderlines should only be payable for the owner of the orderline
+        """
+        order_line: OrderLine = self.get_content_object()
+        is_order_line_owner = order_line.user == user
+        return is_order_line_owner
+
+    def handle_payment(self, user: User):
+        order_line: OrderLine = self.get_content_object()
+        order_line.paid = True
+        order_line.save()
+
+    def handle_refund(self, payment_relation):
+        """
+        Method for handling refunds. For events it deletes the Attendee object.
+
+        :param PaymentRelation payment_relation: user payment to refund
+        """
+        super().handle_refund()
+
+        order_line: OrderLine = self.get_content_object()
+        order_line.paid = False
+        order_line.save()
+
+    def check_refund(self, payment_relation) -> (bool, str):
+        return False, 'Du kan ikke refundere betalinger i Webshop på dette tidspunktet'
+
+    def clean_generic_relation(self):
+        return

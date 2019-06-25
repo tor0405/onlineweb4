@@ -6,44 +6,33 @@ import uuid
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import models
 from django.template.loader import render_to_string
-from django.utils import timezone
 from django.utils.translation import ugettext as _
 from rest_framework.exceptions import NotAcceptable
 
-from apps.events.models import AttendanceEvent, Attendee
 from apps.marks.models import Suspension
 from apps.payment import status
-from apps.webshop.models import OrderLine
 
 User = settings.AUTH_USER_MODEL
 
+PAYMENT_TYPE_CHOICES = (
+    (1, _('Umiddelbar')),
+    (2, _('Frist')),
+    (3, _('Utsettelse')),
+)
 
-class Payment(models.Model):
+# Make sure these exist in settings if they are to be used.
+STRIPE_KEY_CHOICES = (
+    ('arrkom', 'arrkom'),
+    ('prokom', 'prokom'),
+    ('trikom', 'trikom'),
+    ('fagkom', 'fagkom'),
+)
 
-    TYPE_CHOICES = (
-        (1, _('Umiddelbar')),
-        (2, _('Frist')),
-        (3, _('Utsettelse')),
-    )
 
-    # Make sure these exist in settings if they are to be used.
-    STRIPE_KEY_CHOICES = (
-        ('arrkom', 'arrkom'),
-        ('prokom', 'prokom'),
-        ('trikom', 'trikom'),
-        ('fagkom', 'fagkom'),
-    )
-
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    """Which model the payment is created for. For attendance events this should be attendance_event(påmelding)."""
-    object_id = models.PositiveIntegerField()
-    """Object id for the model chosen in content_type."""
-    content_object = GenericForeignKey()
-    """Helper attribute which points to the object select in object_id"""
+class BasePayment(models.Model):
     stripe_key = models.CharField(
         _('stripe key'),
         max_length=10,
@@ -52,7 +41,7 @@ class Payment(models.Model):
     )
     """Which Stripe key to use for payments"""
 
-    payment_type = models.SmallIntegerField(_('type'), choices=TYPE_CHOICES)
+    payment_type = models.SmallIntegerField(_('type'), choices=PAYMENT_TYPE_CHOICES)
     """
         Which payment type to use for payments.
         Can be one of the following:
@@ -86,10 +75,13 @@ class Payment(models.Model):
     def payment_delays(self):
         return self.paymentdelay_set.filter(active=True)
 
-    def payment_delay_users(self):
+    def payment_delay_users(self) -> [User]:
         return [payment_delay.user for payment_delay in self.payment_delays()]
 
-    def create_payment_delay(self, user, deadline):
+    def get_payment_delays_for_user(self, user: User):
+        return PaymentDelay.objects.filter(payment=self, user=user)
+
+    def create_payment_delay(self, user: User, deadline):
         """
         Method for creating a payment delay for user with a set deadline.
         If a PaymentDelay already exsists it is updated with new deadline.
@@ -106,145 +98,55 @@ class Payment(models.Model):
         else:
             PaymentDelay.objects.create(payment=self, user=user, valid_to=deadline)
 
-    def description(self):
-        if self._is_type(AttendanceEvent):
-            return self.content_object.event.title
-        if self._is_type(OrderLine):
-            order_line: OrderLine = self.content_object
-            return f'{order_line.user} - {order_line.payment_description}'
-        logging.getLogger(__name__).error(
-            f'Trying to get description for payment #{self.pk}, but it\'s not an AttendanceEvent or a '
-            f'Webshop OrderLine.'
-        )
-        return 'No description'
+    def get_suspensions_for_user(self, user: User) -> [Suspension]:
+        return Suspension.objects.filter(payment_id=self.id, user=user)
+
+    @property
+    def description(self) -> str:
+        raise NotImplementedError
 
     def get_receipt_description(self):
         receipt_description = ""
         description = [' '] * 30
-        temp = self.description()[0:25]
+        temp = self.description[0:25]
         description[0:len(temp)+1] = list(temp)
         for c in description:
             receipt_description += c
         return receipt_description
 
+    @property
     def responsible_mail(self):
-        if self._is_type(AttendanceEvent):
-            event_type = self.content_object.event.event_type
-            if event_type == 1 or event_type == 4:  # Sosialt & Utflukt
-                return settings.EMAIL_ARRKOM
-            elif event_type == 2:  # Bedpres
-                return settings.EMAIL_BEDKOM
-            elif event_type == 3:  # Kurs
-                return settings.EMAIL_FAGKOM
-            elif event_type == 5:  # Ekskursjon
-                return settings.EMAIL_EKSKOM
-            else:
-                return settings.DEFAULT_FROM_EMAIL
-        elif self._is_type(OrderLine):
-            return settings.EMAIL_PROKOM
-        else:
-            return settings.DEFAULT_FROM_EMAIL
+        return settings.DEFAULT_FROM_EMAIL
 
     def is_user_allowed_to_pay(self, user: User) -> bool:
-        """
-        In the case of attendance events the user should only be allowed to pay if they are attending
-        and has not paid yet.
-        """
-        if self._is_type(AttendanceEvent):
-            event: AttendanceEvent = self.content_object
-            is_attending = event.is_attendee(user)
-            if is_attending:
-                attendee = Attendee.objects.get(user=user, event=event)
-                return not attendee.has_paid
-            return False
-
-        """
-        Payments for Webshop orderlines should only be payable for the owner of the orderline
-        """
-        if self._is_type(OrderLine):
-            order_line: OrderLine = self.content_object
-            is_order_line_owner = order_line.user == user
-            return is_order_line_owner
-
-        """ There are no rules prohibiting user from paying for other types of payments """
         return True
 
     def handle_payment(self, user: User):
         """
         Method for handling payments from user.
-        Deletes any relevant payment delays, suspensions and marks user's attendee object as paid.
-
+        This should handle setting all related information about the payment in other models.
         :param OnlineUser user: User who paid
-
         """
-        if self._is_type(AttendanceEvent):
-            attendee = Attendee.objects.filter(event=self.content_object, user=user)
-
-            # Delete payment delay objects for the user if there are any
-            delays = PaymentDelay.objects.filter(payment=self, user=user)
-            for delay in delays:
-                delay.delete()
-
-            # If the user is suspended because of a lack of payment the suspension is deactivated.
-            suspensions = Suspension.objects.filter(payment_id=self.id, user=user)
-            for suspension in suspensions:
-                suspension.active = False
-                suspension.save()
-
-            if attendee:
-                attendee[0].paid = True
-                attendee[0].save()
-            else:
-                Attendee.objects.create(event=self.content_object, user=user, paid=True)
-
-        elif self._is_type(OrderLine):
-            order_line: OrderLine = self.content_object
-            order_line.paid = True
-            order_line.save()
+        return
 
     def handle_refund(self, payment_relation):
         """
         Method for handling refunds.
-        For events it deletes the Attendee object.
-
-        :param str host: hostname to include in email
+        This should handle the cleanup after a payment has been refunded. Such as invalidating a purchase.
         :param PaymentRelation payment_relation: user payment to refund
         """
         payment_relation.refunded = True
         payment_relation.save()
 
-        if self._is_type(AttendanceEvent):
-            Attendee.objects.get(event=self.content_object,
-                                 user=payment_relation.user).delete()
-
-        if self._is_type(OrderLine):
-            order_line: OrderLine = self.content_object
-            order_line.paid = False
-            order_line.save()
-
     def check_refund(self, payment_relation) -> (bool, str):
-        """Method for checking if the payment can be refunded"""
-        if self._is_type(AttendanceEvent):
-            attendance_event = self.content_object
-            if attendance_event.unattend_deadline < timezone.now():
-                return False, _("Fristen for å melde seg av har utgått")
-            if len(Attendee.objects.filter(event=attendance_event, user=payment_relation.user)) == 0:
-                return False, _("Du er ikke påmeldt dette arrangementet.")
-            if attendance_event.event.event_start < timezone.now():
-                return False, _("Dette arrangementet har allerede startet.")
+        return False, 'Denne betalingstypen kan ikke refunderes'
 
-            return True, ''
-
-        if self._is_type(OrderLine):
-            return False, 'Du kan ikke refundere betalinger i Webshop på dette tidspunktet'
-
-        return False, 'Refund checks not implemented'
-
+    @property
     def prices(self):
         return self.paymentprice_set.all()
 
+    @property
     def price(self):
-        # TODO implement group based pricing
         if self.paymentprice_set.count() > 0:
             return self.paymentprice_set.all()[0]
         return None
@@ -258,23 +160,72 @@ class Payment(models.Model):
         return settings.STRIPE_PUBLIC_KEYS[self.stripe_key]
 
     def _is_type(self, model_type):
-        return ContentType.objects.get_for_model(model_type) == self.content_type
+        content_object = self.get_content_object()
+        return isinstance(model_type, content_object)
 
     def __str__(self):
-        return self.description()
+        return self.description
 
     def clean_generic_relation(self):
-        if not self._is_type(AttendanceEvent) and not self._is_type(OrderLine):
-            raise ValidationError({
-                'content_type': _('Denne typen objekter støttes ikke av betalingssystemet for tiden.'),
-            })
-        else:
-            if not self.content_object or not self.content_object.event.is_attendance_event():
-                raise ValidationError(_('Dette arrangementet har ikke påmelding.'))
+        raise NotImplementedError
 
     def clean(self):
         super().clean()
         self.clean_generic_relation()
+
+    class Meta:
+        verbose_name = _("Generell betaling")
+        verbose_name_plural = _("Generelle betalinger")
+
+        default_permissions = ('add', 'change', 'delete')
+
+
+class Payment(models.Model):
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    """Which model the payment is created for. For attendance events this should be attendance_event(påmelding)."""
+    object_id = models.PositiveIntegerField()
+    """Object id for the model chosen in content_type."""
+    content_object = GenericForeignKey()
+    """Helper attribute which points to the object select in object_id"""
+    stripe_key = models.CharField(
+        _('stripe key'),
+        max_length=10,
+        choices=STRIPE_KEY_CHOICES,
+        default="arrkom"
+    )
+    """Which Stripe key to use for payments"""
+
+    payment_type = models.SmallIntegerField(_('type'), choices=PAYMENT_TYPE_CHOICES)
+    """
+        Which payment type to use for payments.
+        Can be one of the following:
+
+        - Immediate
+        - Deadline. See :attr:`deadline`
+        - Delay. See :attr:`delay`
+    """
+
+    deadline = models.DateTimeField(_("frist"), blank=True, null=True)
+    """Shared deadline for all payments"""
+    active = models.BooleanField(default=True)
+    """Is payment activated"""
+    delay = models.DurationField(_('utsettelse'), blank=True, null=True,
+                                 help_text='Oppgi utsettelse på formatet "dager timer:min:sek"')
+    """Duration after user attended which they have to pay."""
+
+    # For logging and history
+    added_date = models.DateTimeField(_("opprettet dato"), auto_now=True)
+    """Day of payment creation. Automatically set"""
+    changed_date = models.DateTimeField(auto_now=True, editable=False)
+    """Last changed. Automatically set"""
+    last_changed_by = models.ForeignKey(  # Blank and null is temperarly
+        User,
+        editable=False,
+        null=True,
+        on_delete=models.CASCADE
+    )
+    """User who last changed payment. Automatically set"""
 
     class Meta:
         unique_together = ('content_type', 'object_id')
