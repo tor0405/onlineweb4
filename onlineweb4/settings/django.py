@@ -101,7 +101,6 @@ STATICFILES_FINDERS = (
 # Prefix for default profile picture
 DEFAULT_PROFILE_PICTURE_PREFIX = os.path.join(STATIC_URL, "img", "profile_default")
 
-
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -237,6 +236,7 @@ INSTALLED_APPS = (
     "wiki.plugins.help",
     "wiki.plugins.links",
     "wiki.plugins.globalhistory",
+    "graphene_django"
 )
 
 # Make Django messages use bootstrap alert classes
@@ -254,3 +254,7 @@ AUTH_PASSWORD_VALIDATORS = [
         "OPTIONS": {"min_length": 8},
     }
 ]
+
+GRAPHENE = {
+    'SCHEMA': 'onlineweb4.schema.schema',
+}

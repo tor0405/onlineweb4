@@ -7,8 +7,8 @@ from django.views.generic import TemplateView
 from django_js_reverse.views import urls_js
 from onlineweb4 import views
 from rest_framework.documentation import include_docs_urls
-
 from apps.api.urls import urlpatterns as api_urls
+from graphene_django.views import GraphQLView
 
 # URL config
 admin.autodiscover()
@@ -66,7 +66,6 @@ urlpatterns = [
     ),
     url(r"^api-docs/", include_docs_urls(title="Onlineweb4 API")),
 ]
-
 
 # Onlineweb app urls
 if "apps.api" in settings.INSTALLED_APPS:
@@ -193,8 +192,8 @@ if "apps.photoalbum" in settings.INSTALLED_APPS:
     ]
 
 if (
-    "apps.resourcecenter" in settings.INSTALLED_APPS
-    and "apps.mailinglists" in settings.INSTALLED_APPS
+        "apps.resourcecenter" in settings.INSTALLED_APPS
+        and "apps.mailinglists" in settings.INSTALLED_APPS
 ):
     urlpatterns += [
         url(
@@ -246,9 +245,11 @@ if "redwine" in settings.INSTALLED_APPS:
 if "rest_framework" in settings.INSTALLED_APPS:
     from apps.api.utils import SharedAPIRootRouter
 
+
     # API
     def api_urls():
         return SharedAPIRootRouter.shared_router.urls
+
 
     urlpatterns += [url(r"^api/v1/", include(api_urls()))]
 
@@ -257,6 +258,7 @@ if "oidc_provider" in settings.INSTALLED_APPS:
         url(r"^openid/", include("oidc_provider.urls", namespace="oidc_provider"))
     ]
 
+urlpatterns += [url(r'^graphql$', GraphQLView.as_view(graphiql=True))]
 
 # 500 view
 handler500 = views.server_error

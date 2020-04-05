@@ -91,7 +91,7 @@ class Event(models.Model):
     IMAGE_FOLDER = "images/events"
     IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".gif", ".png", ".tif", ".tiff"]
 
-    # Managers
+    # Managbers
     objects = models.Manager()
     by_registration = EventOrderedByRegistration()
 
