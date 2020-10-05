@@ -53,6 +53,10 @@ class PermissionType(TextChoices):
     REGISTRATION_OPENING = "REGISTRATION_OPENING", "Påmeldingsstart"
     WAIT_LIST_BUMP = "WAIT_LIST_BUMP", "Opprykk fra venteliste"
     REGISTERED_BY_ADMIN = "REGISTERED_BY_ADMIN", "Påmeldt av administrator"
+    EVENT_MESSAGES = "EVENT_MESSAGES", "Meldinger fra arrangementansvarlige"
+
+    # Feedback
+    FEEDBACK = "FEEDBACK", "Undersøkelser og tilbakemeldingsskjemaer"
 
     # Marks
     NEW_MARK = "NEW_MARK", "Ny prikk"
@@ -63,3 +67,7 @@ class PermissionType(TextChoices):
 
     # Payments
     RECEIPT = "RECEIPT", "Kvitteringer"
+    PAYMENTS = "PAYMENTS", "Betalinger og betalingspåminnelser"
+
+    # Posters
+    POSTERS = "POSTERS", "Plakater"

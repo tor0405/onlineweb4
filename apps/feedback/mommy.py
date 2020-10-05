@@ -4,13 +4,14 @@ import locale
 import logging
 
 from django.conf import settings
-from django.core.mail import EmailMessage
 from django.utils import timezone
 
 from apps.feedback.models import FeedbackRelation
 from apps.marks.models import Mark, MarkUser
 from apps.mommy import schedule
 from apps.mommy.registry import Task
+from apps.notifications.constants import PermissionType
+from apps.notifications.utils import send_message_to_users, send_message_to_groups
 
 
 class FeedbackMail(Task):
@@ -26,22 +27,24 @@ class FeedbackMail(Task):
             logger.info("Status: " + message.status)
 
             if message.send:
-                EmailMessage(
-                    message.subject,
-                    str(message),
-                    message.committee_mail,
-                    [],
-                    message.attended_mails,
-                ).send()
+                # TODO: FIX ME BEFORE MERGE
+                send_message_to_users(
+                    title=message.subject,
+                    content=str(message),
+                    from_email=message.committee_mail,
+                    recipients=message.attended_mails,
+                    permission_type=PermissionType.FEEDBACK,
+                )
+
                 logger.info("Emails sent to: " + str(message.attended_mails))
 
                 if message.results_message:
-                    EmailMessage(
-                        "Feedback resultat",
-                        message.results_message,
-                        "online@online.ntnu.no",
-                        [message.committee_mail],
-                    ).send()
+                    send_message_to_groups(
+                        title="Resultater fra tilbakemeldingsskjema",
+                        content=message.results_message,
+                        from_email="online@online.ntnu.no",
+                        groups=[message.committee_mail],
+                    )
                     logger.info("Results mail sent to :" + message.committee_mail)
 
     @staticmethod

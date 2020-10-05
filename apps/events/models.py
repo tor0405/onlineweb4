@@ -15,7 +15,6 @@ from django.core.exceptions import (
     ObjectDoesNotExist,
     ValidationError,
 )
-from django.core.mail import EmailMessage
 from django.db import models
 from django.db.models import SET_NULL, Case, Q, Value, When
 from django.template.defaultfilters import slugify
@@ -33,6 +32,7 @@ from apps.events.constants import EventType
 from apps.feedback.models import FeedbackRelation
 from apps.gallery.models import ResponsiveImage
 from apps.marks.models import get_expiration_date
+from apps.notifications.utils import send_message_to_groups
 from apps.payment import status as payment_status
 from apps.payment.mixins import PaymentMixin
 
@@ -1034,14 +1034,18 @@ class AttendanceEvent(PaymentMixin, models.Model):
         return self.event.title
 
     def get_payment_email(self):
-        organizer = self.event.organizer
-        organizer_group: OnlineGroup = OnlineGroup.objects.filter(
-            group=organizer
-        ).first()
+        organizer_group = self.get_payment_group()
         if organizer_group and organizer_group.email:
             return organizer_group.email
         else:
             return settings.DEFAULT_FROM_EMAIL
+
+    def get_payment_group(self) -> OnlineGroup:
+        organizer = self.event.organizer
+        organizer_group: OnlineGroup = OnlineGroup.objects.filter(
+            group=organizer
+        ).first()
+        return organizer_group
 
     def is_user_allowed_to_pay(self, user: User):
         """
@@ -1267,8 +1271,12 @@ class Attendee(models.Model):
                 },
             )
 
-            to_email = self.event.event.feedback_mail()
-            EmailMessage(subject, content, "online@online.ntnu.no", [to_email]).send()
+            send_message_to_groups(
+                title=subject,
+                content=content,
+                from_email="online@online.ntnu.no",
+                groups=[OnlineGroup.objects.get(pk=self.event.event.organizer.id)],
+            )
 
         if not self.has_paid:
             self._clean_payment_delays()

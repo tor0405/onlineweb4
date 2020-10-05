@@ -369,7 +369,7 @@ def mail_participants(request, event_id):
             (image.name, image.read(), image.content_type)
             for image in request.FILES.getlist("image")
         ]
-        mail_sent = handle_mail_participants(
+        handle_mail_participants(
             event,
             request.POST.get("to_email"),
             subject,
@@ -380,12 +380,7 @@ def mail_participants(request, event_id):
             attendees_not_paid,
         )
 
-        if mail_sent:
-            messages.success(request, _("Mailen ble sendt"))
-        else:
-            messages.error(
-                request, _("Vi klarte ikke å sende mailene dine. Prøv igjen")
-            )
+        messages.success(request, _("Mailen ble sendt"))
 
     return render(
         request,

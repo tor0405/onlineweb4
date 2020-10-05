@@ -119,6 +119,9 @@ class Payment(models.Model):
     def responsible_mail(self):
         return self.content_object.get_payment_email()
 
+    def responsible_group(self):
+        return self.content_object.get_payment_group()
+
     def is_user_allowed_to_pay(self, user: User) -> bool:
         return self.content_object.is_user_allowed_to_pay(user)
 

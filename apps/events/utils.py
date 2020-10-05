@@ -4,8 +4,6 @@ import logging
 import icalendar
 from django.conf import settings
 from django.contrib.humanize.templatetags.humanize import naturaltime
-from django.core.exceptions import ImproperlyConfigured
-from django.core.mail import EmailMessage
 from django.core.signing import BadSignature, Signer
 from django.http import HttpResponse
 from django.template.loader import render_to_string
@@ -16,7 +14,7 @@ from apps.authentication.models import OnlineGroup
 from apps.authentication.models import OnlineUser as User
 from apps.events.models import Attendee, Event, Extras
 from apps.notifications.constants import PermissionType
-from apps.notifications.utils import send_message_to_users
+from apps.notifications.utils import send_message_to_users, send_message_to_groups
 from apps.payment.models import PaymentDelay, PaymentRelation
 
 
@@ -375,28 +373,28 @@ def handle_mail_participants(
     # Who to send emails to
     send_to_users = _to_email_options[_to_email_value][0]
 
-    signature = f"\n\nVennlig hilsen Linjeforeningen Online.\n(Denne eposten kan besvares til {from_email})"
+    signature = f"\n\nVennlig hilsen Linjeforeningen Online.\n(Denne meldingen kan besvares til {from_email})"
 
     message = f"{_message}{signature}"
 
-    # Send mail
-    try:
-        email_addresses = [a.user.primary_email for a in send_to_users]
-        _email_sent = EmailMessage(
-            str(subject),
-            str(message),
-            from_email,
-            [from_email],
-            email_addresses,
-            attachments=(_images),
-        ).send()
+    send_message_to_users(
+        title=str(subject),
+        content=str(message),
+        from_email=from_email,
+        recipients=send_to_users,
+        permission_type=PermissionType.EVENT_MESSAGES,
+        attachments=_images,
+    )
+    if organizer_group:
+        send_message_to_groups(
+            title=str(subject),
+            content=str(message),
+            from_email=from_email,
+            groups=[organizer_group],
+            attachments=_images,
+        )
         logger.info(
             'Sent mail to %s for event "%s".'
             % (_to_email_options[_to_email_value][1], event)
         )
-        return _email_sent, all_attendees, attendees_on_waitlist, attendees_not_paid
-    except ImproperlyConfigured as e:
-        logger.error(
-            'Something went wrong while trying to send mail to %s for event "%s"\n%s'
-            % (_to_email_options[_to_email_value][1], event, e)
-        )
+        return all_attendees, attendees_on_waitlist, attendees_not_paid

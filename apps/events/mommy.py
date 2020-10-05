@@ -2,13 +2,15 @@
 import locale
 import logging
 
-from django.core.mail import EmailMessage
 from django.utils import timezone
 
+from apps.authentication.models import OnlineGroup
 from apps.events.models import AttendanceEvent
 from apps.marks.models import Mark, MarkUser
 from apps.mommy import schedule
 from apps.mommy.registry import Task
+from apps.notifications.constants import PermissionType
+from apps.notifications.utils import send_message_to_groups, send_message_to_users
 
 
 class SetEventMarks(Task):
@@ -18,7 +20,7 @@ class SetEventMarks(Task):
         logger.info("Attendance mark setting started")
         locale.setlocale(locale.LC_ALL, "nb_NO.UTF-8")
 
-        # Gets all active attendance events thats suposed to give automatic marks
+        # Get all active attendance events that are supposed to give automatic marks.
         attendance_events = SetEventMarks().active_events()
 
         for attendance_event in attendance_events:
@@ -26,35 +28,35 @@ class SetEventMarks(Task):
             message = SetEventMarks.generate_message(attendance_event)
 
             if message.send:
-                EmailMessage(
-                    message.subject,
-                    str(message),
-                    message.committee_mail,
-                    [],
-                    message.not_attended_mails,
-                ).send()
-                logger.info("Emails sent to: " + str(message.not_attended_mails))
+                send_message_to_users(
+                    title=message.subject,
+                    content=str(message),
+                    from_email=message.organizer,
+                    recipients=message.not_attended_users,
+                    permission_type=PermissionType.NEW_MARK,
+                )
+                logger.info("Emails sent to: " + str(message.not_attended_users))
             else:
                 logger.info("Everyone met. No mails sent to users")
 
-            if message.committee_message:
-                EmailMessage(
-                    message.subject,
-                    message.committee_message,
-                    "online@online.ntnu.no",
-                    [message.committee_mail],
-                ).send()
-                logger.info("Email sent to: " + message.committee_mail)
+            if message.organizer_message:
+                send_message_to_groups(
+                    title=message.subject,
+                    content=message.organizer_message,
+                    from_email="online@online.ntnu.no",
+                    groups=[message.organizer],
+                )
+                logger.info("Email sent to: " + message.organizer_mail)
 
     @staticmethod
-    def set_marks(attendance_event, logger=logging.getLogger()):
+    def set_marks(attendance_event: AttendanceEvent, logger=logging.getLogger()):
         event = attendance_event.event
-        logger.info('Proccessing "' + event.title + '"')
+        logger.info(f'Proccessing "{event.title}"')
         mark = Mark()
-        mark.title = "Manglende oppmøte på %s" % (event.title)
+        mark.title = f"Manglende oppmøte på {event.title}"
         mark.category = event.event_type
         mark.description = (
-            "Du har fått en prikk på grunn av manglende oppmøte på %s." % (event.title)
+            f"Du har fått en prikk på grunn av manglende oppmøte på {event.title}."
         )
         mark.save()
 
@@ -69,21 +71,24 @@ class SetEventMarks(Task):
         attendance_event.save()
 
     @staticmethod
-    def generate_message(attendance_event):
+    def generate_message(attendance_event: AttendanceEvent):
         message = Message()
 
-        not_attended = attendance_event.not_attended()
+        not_attended_users = attendance_event.not_attended()
         event = attendance_event.event
         title = str(event.title)
 
         # return if everyone attended
-        if not not_attended:
+        if not not_attended_users:
             return message
 
-        message.not_attended_mails = [user.email for user in not_attended]
+        message.not_attended_users = not_attended_users
 
-        message.committee_mail = event.feedback_mail()
-        not_attended_string = "\n".join([user.get_full_name() for user in not_attended])
+        message.organizer_mail = event.feedback_mail()
+        message.organizer = OnlineGroup.objects.get(pk=event.organizer.pk)
+        not_attended_string = "\n".join(
+            [user.get_full_name() for user in not_attended_users]
+        )
 
         message.subject = title
         message.intro = (
@@ -91,14 +96,14 @@ class SetEventMarks(Task):
             % (title)
         )
         message.contact = "\n\nEventuelle spørsmål sendes til %s " % (
-            message.committee_mail
+            message.organizer_mail
         )
         message.send = True
-        message.committee_message = (
+        message.organizer_message = (
             'På grunn av manglende oppmøte på "%s" har følgende brukere fått en prikk:\n'
             % (event.title)
         )
-        message.committee_message += not_attended_string
+        message.organizer_message += not_attended_string
         return message
 
     @staticmethod
@@ -114,13 +119,14 @@ class Message:
     subject = ""
     intro = ""
     contact = ""
-    not_attended_mails = ""
+    not_attended_users = []
     send = False
     end = "\n\nMvh\nLinjeforeningen Online"
     results_message = False
 
-    committee_mail = ""
-    committee_message = False
+    organizer: OnlineGroup = None
+    organizer_mail: str = None
+    organizer_message: str = None
 
     def __str__(self):
         message = "%s %s %s" % (self.intro, self.contact, self.end)

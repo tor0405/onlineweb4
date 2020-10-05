@@ -11,7 +11,7 @@ from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.authentication.models import OnlineUser as User
+from apps.authentication.models import OnlineUser as User, OnlineGroup
 from apps.gallery.models import ResponsiveImage
 from apps.payment.mixins import PaymentMixin
 
@@ -285,6 +285,9 @@ class OrderLine(PaymentMixin, models.Model):
 
     def get_payment_email(self) -> str:
         return settings.EMAIL_PROKOM
+
+    def get_payment_group(self) -> OnlineGroup:
+        return None
 
     def is_user_allowed_to_pay(self, user: User) -> bool:
         """

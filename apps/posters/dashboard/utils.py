@@ -4,21 +4,21 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ImproperlyConfigured
-from django.core.mail import EmailMessage
 from django.db.models import Q
 from django.template.loader import render_to_string
 from guardian.models import GroupObjectPermission, UserObjectPermission
 
-from apps.authentication.models import OnlineUser as User
+from apps.authentication.models import OnlineUser as User, OnlineGroup
 from apps.companyprofile.models import Company
+from apps.notifications.constants import PermissionType
+from apps.notifications.utils import send_message_to_users, send_message_to_groups
 
 from ..models import Poster
 
+logger = logging.getLogger(__name__)
+
 
 def _handle_poster_add(request, form, order_type):
-    logger = logging.getLogger(__name__)
-
     poster = form.save(commit=False)
     if request.POST.get("company"):
         poster.company = Company.objects.get(pk=request.POST.get("company"))
@@ -50,20 +50,23 @@ def _handle_poster_add(request, form, order_type):
     message = render_to_string("posters/email/new_order_notification.txt", context)
 
     from_email = settings.EMAIL_PROKOM
-    to_emails = [settings.EMAIL_PROKOM, request.user.primary_email]
+    poster_admin_groups = get_poster_admin_online_groups()
 
-    try:
-        email_sent = EmailMessage(subject, message, from_email, to_emails, []).send()
-    except ImproperlyConfigured:
-        email_sent = False
-        logger.exception("Failed to send email for new order")
-    if email_sent:
-        messages.success(request, "Opprettet bestilling")
-    else:
-        messages.error(
-            request,
-            "Klarte ikke å sende epost, men bestillingen din ble fortsatt opprettet",
-        )
+    send_message_to_users(
+        title=subject,
+        content=message,
+        recipients=[request.user],
+        permission_type=PermissionType.GROUP_MESSAGE,
+        from_email=from_email,
+    )
+    send_message_to_groups(
+        title=subject,
+        content=message,
+        from_email=from_email,
+        groups=poster_admin_groups,
+    )
+
+    messages.success(request, "Opprettet bestilling")
 
     if poster.id % 100 == 0:
         _handle_poster_celebration(poster, context)
@@ -75,13 +78,13 @@ def _handle_poster_celebration(poster, context):
     message = render_to_string("posters/email/100_multiple_order.txt", context)
 
     from_email = settings.EMAIL_DOTKOM
-    to_email = [settings.EMAIL_PROKOM]
-    try:
-        EmailMessage(subject, message, from_email, to_email, []).send()
-    except ImproperlyConfigured:
-        logger.exception(
-            "Failed to send email Congratulating ProKom with number of poster orders divisible by 100"
-        )
+    poster_admin_groups = get_poster_admin_online_groups()
+    send_message_to_groups(
+        title=subject,
+        content=message,
+        from_email=from_email,
+        groups=poster_admin_groups,
+    )
 
 
 def get_poster_admins():
@@ -102,4 +105,14 @@ def get_poster_admin_groups():
     all_permissions = Permission.objects.filter(content_type=content_type)
     change_order_perm = all_permissions.filter(codename="change_poster").first()
     admin_groups = Group.objects.filter(permissions=change_order_perm).distinct()
+    return admin_groups
+
+
+def get_poster_admin_online_groups():
+    content_type = ContentType.objects.get_for_model(Poster)
+    all_permissions = Permission.objects.filter(content_type=content_type)
+    change_order_perm = all_permissions.filter(codename="change_poster").first()
+    admin_groups = OnlineGroup.objects.filter(
+        group__permissions=change_order_perm
+    ).distinct()
     return admin_groups

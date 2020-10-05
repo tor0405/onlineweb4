@@ -64,6 +64,31 @@ class Notification(models.Model):
         )
 
 
+class Attachment(models.Model):
+    file = models.FileField(upload_to="notifications/attachments")
+    notifications = models.ManyToManyField(
+        to=Notification, through="MessageAttachment", related_name="attachments"
+    )
+
+
+class MessageAttachment(models.Model):
+    notification = models.ForeignKey(
+        to=Notification, related_name="message_attachments", on_delete=models.CASCADE
+    )
+    attachment = models.ForeignKey(
+        to=Attachment, related_name="message_attachments", on_delete=models.CASCADE
+    )
+
+    class Meta:
+        verbose_name = "Meldingsvedlegg"
+        verbose_name_plural = "Meldingsvedlegg"
+        ordering = (
+            "notification",
+            "attachment",
+        )
+        unique_together = (("notification", "attachment",),)
+
+
 class Subscription(models.Model):
     """
     Model describing a webpush notification subscription.

@@ -2,7 +2,7 @@ import json
 import logging
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMessage
 from onlineweb4.celery import app as celery_app
 from pywebpush import WebPushException, webpush
 from rest_framework import serializers
@@ -130,13 +130,15 @@ def dispatch_email_notification_task(_, notification_id: int):
     notification = Notification.objects.get(pk=notification_id)
     user = notification.recipient
 
-    send_mail(
-        subject=notification.title,
-        message=notification.body,
-        from_email=notification.from_email,
-        recipient_list=[user.primary_email],
-        fail_silently=False,
-    )
+    attachments = [attachment.file for attachment in notification.attachments.all()]
 
-    notification.sent_email = True
+    is_email_sent = EmailMessage(
+        subject=notification.title,
+        body=notification.body,
+        from_email=notification.from_email,
+        to=[user.primary_email],
+        attachments=attachments,
+    ).send(fail_silently=False)
+
+    notification.sent_email = bool(is_email_sent)
     notification.save()

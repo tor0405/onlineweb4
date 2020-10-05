@@ -5,7 +5,6 @@ import logging
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.core.mail import EmailMessage
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -15,6 +14,8 @@ from apps.events.models import AttendanceEvent, Attendee
 from apps.marks.models import Mark, MarkUser, Suspension
 from apps.mommy import schedule
 from apps.mommy.registry import Task
+from apps.notifications.constants import PermissionType
+from apps.notifications.utils import send_message_to_users, send_message_to_groups
 from apps.payment.models import Payment, PaymentDelay
 
 
@@ -70,9 +71,13 @@ class PaymentReminder(Task):
             },
         )
 
-        receivers = PaymentReminder.not_paid_mail_addresses(payment)
-
-        EmailMessage(subject, content, payment.responsible_mail(), [], receivers).send()
+        send_message_to_users(
+            title=subject,
+            content=content,
+            from_email=payment.responsible_mail(),
+            permission_type=PermissionType.PAYMENTS,
+            recipients=PaymentReminder.not_paid(payment),
+        )
 
     @staticmethod
     def send_deadline_passed_mail(payment):
@@ -88,9 +93,13 @@ class PaymentReminder(Task):
             },
         )
 
-        receivers = PaymentReminder.not_paid_mail_addresses(payment)
-
-        EmailMessage(subject, content, payment.responsible_mail(), [], receivers).send()
+        send_message_to_users(
+            title=subject,
+            content=content,
+            from_email=payment.responsible_mail(),
+            permission_type=PermissionType.PAYMENTS,
+            recipients=PaymentReminder.not_paid(payment),
+        )
 
     @staticmethod
     def send_missed_payment_mail(payment):
@@ -132,9 +141,12 @@ class PaymentReminder(Task):
             },
         )
 
-        receivers = [payment.responsible_mail()]
-
-        EmailMessage(subject, content, "online@online.ntnu.no", [], receivers).send()
+        send_message_to_groups(
+            title=subject,
+            content=content,
+            from_email="online@online.ntnu.no",
+            groups=[payment.responsible_group()],
+        )
 
     @staticmethod
     def not_paid(payment):
@@ -266,9 +278,13 @@ class PaymentDelayHandler(Task):
             },
         )
 
-        receivers = [payment_delay.user.email]
-
-        EmailMessage(subject, content, payment.responsible_mail(), [], receivers).send()
+        send_message_to_users(
+            title=subject,
+            content=content,
+            from_email=payment.responsible_mail(),
+            permission_type=PermissionType.PAYMENTS,
+            recipients=[payment_delay.user],
+        )
 
     @staticmethod
     def send_notification_mail(payment_delay, unattend_deadline_passed):
@@ -296,9 +312,13 @@ class PaymentDelayHandler(Task):
             },
         )
 
-        receivers = [payment_delay.user.email]
-
-        EmailMessage(subject, content, payment.responsible_mail(), [], receivers).send()
+        send_message_to_users(
+            title=subject,
+            content=content,
+            from_email=payment.responsible_mail(),
+            permission_type=PermissionType.PAYMENTS,
+            recipients=[payment_delay.user],
+        )
 
     @staticmethod
     def set_mark(payment_delay):

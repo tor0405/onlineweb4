@@ -4,7 +4,7 @@ from typing import List
 from django.conf import settings
 from django.utils import timezone
 
-from apps.authentication.models import OnlineUser as User
+from apps.authentication.models import OnlineUser as User, OnlineGroup
 
 
 class PaymentMixin:
@@ -25,6 +25,13 @@ class PaymentMixin:
         :return the email of the responsible committee/group/user which created or handles the payment.
         """
         return settings.DEFAULT_FROM_EMAIL
+
+    @abstractmethod
+    def get_payment_group(self) -> OnlineGroup:
+        """
+        :return: the group responsible for handling the payment.
+        """
+        pass
 
     @abstractmethod
     def is_user_allowed_to_pay(self, user: User) -> bool:
