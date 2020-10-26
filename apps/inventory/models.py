@@ -44,6 +44,7 @@ class Item(models.Model):
     low_stock_treshold = models.IntegerField(
         "Grense for email om lav beholdning", default=10
     )
+    _eans = models.TextField("Strekkode")
 
     @property
     def oldest_expiration_date(self):
@@ -99,6 +100,21 @@ class Item(models.Model):
                 self.reduce_stock(diff)
 
         self.handle_notifications(amount)
+
+    @property
+    def eans(self):
+        return self._eans.splitlines()
+
+    @eans.setter
+    def eans(self, eans):
+        self._eans = "\n".join(eans)
+
+    def add_ean(self, ean):
+        self._eans += f"\n{ean}"
+
+    def remove_ean(self, ean):
+        self.eans.remove(ean)
+
 
     def handle_notifications(self, amount):
 
