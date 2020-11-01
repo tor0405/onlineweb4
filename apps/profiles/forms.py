@@ -12,7 +12,6 @@ ZIP_CODE_VALIDATION_ERROR = "Postnummer må bestå av fire siffer."
 
 
 class ProfileForm(forms.ModelForm):
-
     class Meta:
         model = OnlineUser
 

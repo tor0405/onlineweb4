@@ -90,9 +90,7 @@ def _create_profile_context(request):
         # positions
         "groups": groups,
         # privacy
-        "privacy_form": PrivacyForm(
-            instance=request.user.privacy
-        ),
+        "privacy_form": PrivacyForm(instance=request.user.privacy),
         # nibble information
         "transactions": PaymentTransaction.objects.filter(user=request.user),
         "orders": Order.objects.filter(order_line__user=request.user).order_by(
@@ -132,7 +130,7 @@ def _create_profile_context(request):
         "has_active_approvals": MembershipApproval.objects.filter(
             applicant=request.user, processed=False
         ).count()
-                                > 0,
+        > 0,
         "approvals": [
             # Tuple syntax ('title', list_of_approvals, is_collapsed)
             (
@@ -172,7 +170,7 @@ def _create_profile_context(request):
         "internal_services_form": InternalServicesForm(),
         "in_comittee": has_access(request),
         "enable_dataporten_application": settings.DATAPORTEN.get("STUDY").get("ENABLED")
-                                         or settings.DATAPORTEN.get("STUDY").get("TESTING"),
+        or settings.DATAPORTEN.get("STUDY").get("TESTING"),
     }
 
     return context
@@ -390,7 +388,7 @@ def delete_email(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                                       % email.email
+                            % email.email
                         }
                     ),
                 )
@@ -425,7 +423,7 @@ def set_primary(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                                       % email.email
+                            % email.email
                         }
                     ),
                 )
@@ -439,7 +437,7 @@ def set_primary(request):
                             "message": _(
                                 "%s er allerede satt som primær-epostaddresse."
                             )
-                                       % email.email
+                            % email.email
                         }
                     ),
                 )
@@ -473,7 +471,7 @@ def verify_email(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                                       % email.email
+                            % email.email
                         }
                     ),
                 )
@@ -507,8 +505,8 @@ def _send_verification_mail(request, email):
         raise ie
 
     email_message = (
-            _(
-                """
+        _(
+            """
     En ny epost har blitt registrert på din profil på online.ntnu.no.
     
     For å kunne ta eposten i bruk kreves det at du verifiserer den. Du kan gjore dette
@@ -519,8 +517,8 @@ def _send_verification_mail(request, email):
     Denne lenken vil være gyldig i 24 timer. Dersom du behøver å få tilsendt en ny lenke
     kan dette gjøres ved å klikke på knappen for verifisering på din profil.
     """
-            )
-            % (request.META["HTTP_HOST"], token)
+        )
+        % (request.META["HTTP_HOST"], token)
     )
 
     try:
@@ -597,7 +595,7 @@ def search_for_users(query, limit=10):
     results = []
 
     for result in watson.search(
-            query, models=(User.objects.filter(privacy__visible_for_other_users=True),)
+        query, models=(User.objects.filter(privacy__visible_for_other_users=True),)
     ):
         results.append(result.object)
 
