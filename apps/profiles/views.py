@@ -73,7 +73,13 @@ def index(request, active_tab="overview"):
 def _create_profile_context(request):
     groups = Group.objects.all()
 
-    user_privacy = request.user.privacy
+    user_privacy = Privacy.objects.get_or_create(user=request.user)  # This is a hack
+    """
+    To make sure a privacy exists when visiting /profiles/privacy/.
+    Until now, it has been generated upon loading models.py, which is a bit hacky.
+    The code is refactored to use Django signals, so whenever a user is created, a privacy-property is set up.
+    """
+
     privacy_initial = {
         "allow_pictures": user_privacy.allow_pictures
         if user_privacy.allow_pictures is not None
@@ -135,7 +141,7 @@ def _create_profile_context(request):
         "has_active_approvals": MembershipApproval.objects.filter(
             applicant=request.user, processed=False
         ).count()
-        > 0,
+                                > 0,
         "approvals": [
             # Tuple syntax ('title', list_of_approvals, is_collapsed)
             (
@@ -175,7 +181,7 @@ def _create_profile_context(request):
         "internal_services_form": InternalServicesForm(),
         "in_comittee": has_access(request),
         "enable_dataporten_application": settings.DATAPORTEN.get("STUDY").get("ENABLED")
-        or settings.DATAPORTEN.get("STUDY").get("TESTING"),
+                                         or settings.DATAPORTEN.get("STUDY").get("TESTING"),
     }
 
     return context
@@ -393,7 +399,7 @@ def delete_email(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                            % email.email
+                                       % email.email
                         }
                     ),
                 )
@@ -428,7 +434,7 @@ def set_primary(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                            % email.email
+                                       % email.email
                         }
                     ),
                 )
@@ -442,7 +448,7 @@ def set_primary(request):
                             "message": _(
                                 "%s er allerede satt som primær-epostaddresse."
                             )
-                            % email.email
+                                       % email.email
                         }
                     ),
                 )
@@ -476,7 +482,7 @@ def verify_email(request):
                             "message": _(
                                 "%s er ikke en eksisterende epostaddresse på din profil."
                             )
-                            % email.email
+                                       % email.email
                         }
                     ),
                 )
@@ -510,20 +516,20 @@ def _send_verification_mail(request, email):
         raise ie
 
     email_message = (
-        _(
-            """
-En ny epost har blitt registrert på din profil på online.ntnu.no.
-
-For å kunne ta eposten i bruk kreves det at du verifiserer den. Du kan gjore dette
-ved å besøke lenken under.
-
-http://%s/auth/verify/%s/
-
-Denne lenken vil være gyldig i 24 timer. Dersom du behøver å få tilsendt en ny lenke
-kan dette gjøres ved å klikke på knappen for verifisering på din profil.
-"""
-        )
-        % (request.META["HTTP_HOST"], token)
+            _(
+                """
+    En ny epost har blitt registrert på din profil på online.ntnu.no.
+    
+    For å kunne ta eposten i bruk kreves det at du verifiserer den. Du kan gjore dette
+    ved å besøke lenken under.
+    
+    http://%s/auth/verify/%s/
+    
+    Denne lenken vil være gyldig i 24 timer. Dersom du behøver å få tilsendt en ny lenke
+    kan dette gjøres ved å klikke på knappen for verifisering på din profil.
+    """
+            )
+            % (request.META["HTTP_HOST"], token)
     )
 
     try:
@@ -600,7 +606,7 @@ def search_for_users(query, limit=10):
     results = []
 
     for result in watson.search(
-        query, models=(User.objects.filter(privacy__visible_for_other_users=True),)
+            query, models=(User.objects.filter(privacy__visible_for_other_users=True),)
     ):
         results.append(result.object)
 
