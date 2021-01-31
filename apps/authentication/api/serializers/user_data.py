@@ -140,7 +140,7 @@ class WikiAttachmentRevisionSerializer(serializers.ModelSerializer):
 
 class WikiArticleSerializer(serializers.ModelSerializer):
     current_revision = WikiArticleRevisionSerializer()
-    group = serializers.CharField(source="group.name")
+    group = serializers.CharField(source="group.name_long")
 
     class Meta:
         model = WikiArticle
@@ -195,7 +195,7 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
     description = serializers.SerializerMethodField()
 
     def get_items(self, obj: PaymentTransaction):
-        return obj.get_items()
+        return obj.get_receipt_items()
 
     def get_description(self, obj: PaymentTransaction):
         return obj.get_receipt_description()
