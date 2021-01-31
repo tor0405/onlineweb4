@@ -96,7 +96,10 @@ class AttendanceEventViewSet(viewsets.ModelViewSet):
         allow_pictures = data.get("allow_pictures")
 
         # Set the values to the users default settings if sent data is empty
-        if attending_visibility is None and privacy.visible_as_attending_events is not None:
+        if (
+            attending_visibility is None
+            and privacy.visible_as_attending_events is not None
+        ):
             attending_visibility = privacy.visible_as_attending_events
         else:
             attending_visibility = False
