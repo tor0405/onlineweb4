@@ -75,6 +75,8 @@ def generate_user(username: str) -> OnlineUser:
     user = G(
         OnlineUser, username=username, ntnu_username=username, phone_number="12345678"
     )
+    # signals on user creation isn't run, so we have to manually create
+    # the privacy-object here
     user.privacy = G(Privacy, user=user)
     G(Email, user=user)
     return user
