@@ -142,6 +142,7 @@ def index(request):
                 },
                 {"name": "Nutrix", "email": "nutrixlinjeforening@gmail.com"},
                 {"name": "SALT", "email": "postmottak@studentalt.no"},
+                {"name": "Cibus", "email": "cibus.mattek@gmail.com"},
                 {
                     "name": "Tim & Shænko (ligger også på Gløshaugen)",
                     "email": "styret@bygging.no",
